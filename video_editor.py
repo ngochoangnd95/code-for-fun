@@ -1,3 +1,4 @@
+from PyQt5 import QtCore, QtGui
 from PyQt5.QtWidgets import QApplication, QButtonGroup, QCheckBox, QComboBox, QDesktopWidget, QFormLayout, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLayout, QLayoutItem, QLineEdit, QMainWindow, QPushButton, QRadioButton, QVBoxLayout, QWidget
 import sys
 
@@ -71,7 +72,7 @@ class View(QMainWindow):
 
         self.setWindowTitle('Video editor')
 
-        self.centralWidget = QWidget(self)
+        self.centralWidget = DragDropFileWidget(self)
         self.setCentralWidget(self.centralWidget)
 
         screen = QDesktopWidget().screenGeometry()
@@ -98,16 +99,23 @@ class View(QMainWindow):
         self.featureSelectorCpn._connectSignals(handler)
         self.featureOptionCpn._connectSignals(handler)
 
+    def addDragDropFileHandler(self, handler) -> None:
+        self.centralWidget._addDragDropFileHandler(handler)
+
     def setCommand(self, command) -> None:
         self.commandCpn.commandTxb.setText(command)
 
 
 class Model():
     def __init__(self) -> None:
-        pass
+        self.paths = []
+        self.feature = 'FORMAT'
+        self.generalParams = {}
+        self.featureParams = {}
+        self.forceFormat = False
 
-    def makeACommand(self, objectName, value) -> str:
-        return 'aaa'
+    def createCommand(self, objectName, value) -> str:
+        pass
 
 
 class Controller():
@@ -116,11 +124,57 @@ class Controller():
         self.model = model
 
         self.view.connectSignals(self.handleEvents)
+        self.view.addDragDropFileHandler(self.handleDragDropFile)
 
     def handleEvents(self, value) -> None:
         objectName = self.view.sender().objectName()
-        command = self.model.makeACommand(objectName, value)
+        command = self.model.createCommand(objectName, value)
         self.view.setCommand(command)
+
+    def handleDragDropFile(self, paths) -> None:
+        command = self.model.createCommand('dragDropFile', paths)
+        self.view.setCommand(command)
+
+
+class DragDropFileWidget(QWidget):
+    def __init__(self, parent) -> None:
+        super().__init__(parent=parent)
+        self.setAcceptDrops(True)
+        self.paths = []
+        self.handler = None
+
+    def dragEnterEvent(self, event: QtGui.QDragEnterEvent) -> None:
+        if event.mimeData().hasUrls():
+            event.accept()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event: QtGui.QDragMoveEvent) -> None:
+        if event.mimeData().hasUrls():
+            event.setDropAction(QtCore.Qt.CopyAction)
+            event.accept()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event: QtGui.QDropEvent) -> None:
+        if event.mimeData().hasUrls():
+            event.setDropAction(QtCore.Qt.CopyAction)
+            event.accept()
+
+            self.paths = []
+            for url in event.mimeData().urls():
+                if url.isLocalFile():
+                    self.paths.append(str(url.toLocalFile()))
+                else:
+                    self.paths.append(str(url.toString()))
+
+            if self.handler:
+                self.handler(self.paths)
+        else:
+            event.ignore()
+
+    def _addDragDropFileHandler(self, handler) -> None:
+        self.handler = handler
 
 
 class CommandComponent(Component):
