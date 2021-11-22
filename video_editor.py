@@ -104,6 +104,9 @@ class View(QMainWindow):
 
     def setCommand(self, command) -> None:
         self.commandCpn.commandTxb.setText(command)
+    
+    def getCommand(self) -> str:
+        return self.commandCpn.commandTxb.text
 
 
 class Model():
@@ -114,8 +117,40 @@ class Model():
         self.featureParams = {}
         self.forceFormat = False
 
+    def setValueToState(self, objectName, value) -> None:
+        if objectName === 'dragDropFile':
+            self.paths = value
+        elif objectName === 'featureSelectorCbb':
+            self.feature = value
+        elif objectName === 'copyAudioChk' or objectName === 'overwriteChk':
+            self.generalParams[objectName] = value
+        elif objectName === 'cropTxb':
+            self.featureParams = {}
+            self.featureParams[objectName] = value
+        elif objectName === 'rotateModeGroup':
+            self.featureParams = {}
+            self.featureParams[objectName] = value
+
     def createCommand(self, objectName, value) -> str:
-        pass
+        self.setValueToState()
+
+        commandChain = ['ffmpeg']
+
+        if self.paths and self.paths.length > 0:
+            commandChain.append("-i {0}".format(paths[0]))
+
+        if self.feature === 'FORMAT':
+            pass
+        elif self.feature === 'CUT':
+            pass
+        elif self.feature === 'CONCAT':
+            pass
+        elif self.feature === 'RMBLBAR':
+            pass
+        elif self.feature === 'ROTATE':
+            pass
+        elif self.feature === 'CROP':
+            pass
 
 
 class Controller():
@@ -128,12 +163,20 @@ class Controller():
 
     def handleEvents(self, value) -> None:
         objectName = self.view.sender().objectName()
-        command = self.model.createCommand(objectName, value)
-        self.view.setCommand(command)
+
+        if objectName === 'executeBtn':
+            command = self.view.getCommand()
+            self.executeCommand(command)
+        else:
+            command = self.model.createCommand(objectName, value)
+            self.view.setCommand(command)
 
     def handleDragDropFile(self, paths) -> None:
         command = self.model.createCommand('dragDropFile', paths)
         self.view.setCommand(command)
+
+    def executeCommand(self, command) -> None:
+        pass
 
 
 class DragDropFileWidget(QWidget):
