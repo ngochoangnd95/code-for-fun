@@ -1,7 +1,13 @@
-from PyQt5 import QtCore, QtGui
-from PyQt5.QtWidgets import QApplication, QButtonGroup, QCheckBox, QComboBox, QDesktopWidget, QFormLayout, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLayout, QLayoutItem, QLineEdit, QMainWindow, QPushButton, QRadioButton, QVBoxLayout, QWidget
 import sys
+from pathlib import Path
 
+from PyQt5 import QtCore, QtGui
+from PyQt5.QtCore import QProcess
+from PyQt5.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox,
+                             QDesktopWidget, QFormLayout, QGridLayout,
+                             QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+                             QMainWindow, QPushButton, QRadioButton,
+                             QVBoxLayout, QWidget)
 
 META = {
     "FORMAT": {
@@ -104,53 +110,81 @@ class View(QMainWindow):
 
     def setCommand(self, command) -> None:
         self.commandCpn.commandTxb.setText(command)
-    
+
     def getCommand(self) -> str:
-        return self.commandCpn.commandTxb.text
+        return self.commandCpn.commandTxb.text()
+
+    def showFeatureOptions(self, feature) -> None:
+        self.featureOptionCpn.showFeatureOptions(feature)
 
 
 class Model():
     def __init__(self) -> None:
+        self.metaKeys = list(META.keys())
         self.paths = []
-        self.feature = 'FORMAT'
+        self.feature = self.metaKeys[0]
         self.generalParams = {}
         self.featureParams = {}
-        self.forceFormat = False
+        self.forceFormat = ''
 
     def setValueToState(self, objectName, value) -> None:
-        if objectName === 'dragDropFile':
+        if objectName == 'dragDropFile':
             self.paths = value
-        elif objectName === 'featureSelectorCbb':
-            self.feature = value
-        elif objectName === 'copyAudioChk' or objectName === 'overwriteChk':
+        elif objectName == 'featureSelectorCbb':
+            self.feature = self.metaKeys[value]
+        elif objectName == 'copyAudioChk' or objectName == 'overwriteChk':
             self.generalParams[objectName] = value
-        elif objectName === 'cropTxb':
+        elif objectName == 'cropTbx':
             self.featureParams = {}
             self.featureParams[objectName] = value
-        elif objectName === 'rotateModeGroup':
+        elif objectName == 'rotateModeGroup':
             self.featureParams = {}
             self.featureParams[objectName] = value
 
+    def getOutput(self, inputPath, suffix) -> dict:
+        inputFileName = Path(inputPath).stem
+        directory = Path(inputPath).parent
+        outputFileName = '{}_{}.mp4'.format(inputFileName, suffix)
+        outputFilePath = Path(directory).joinpath(outputFileName).__str__()
+        return {'name': outputFileName, 'path': outputFilePath}
+
     def createCommand(self, objectName, value) -> str:
-        self.setValueToState()
+        self.setValueToState(objectName, value)
 
         commandChain = ['ffmpeg']
 
-        if self.paths and self.paths.length > 0:
-            commandChain.append("-i {0}".format(paths[0]))
+        if self.forceFormat:
+            commandChain.append(self.forceFormat)
 
-        if self.feature === 'FORMAT':
+        if self.paths and len(self.paths) > 0:
+            inputPath = Path(self.paths[0]).__str__()
+            commandChain.append('-i "{}"'.format(inputPath))
+
+        if self.feature == 'FORMAT':
             pass
-        elif self.feature === 'CUT':
+        elif self.feature == 'CUT':
             pass
-        elif self.feature === 'CONCAT':
+        elif self.feature == 'CONCAT':
             pass
-        elif self.feature === 'RMBLBAR':
+        elif self.feature == 'RMBLBAR':
             pass
-        elif self.feature === 'ROTATE':
-            pass
-        elif self.feature === 'CROP':
-            pass
+        elif self.feature == 'ROTATE':
+            rotateModeGroup = self.featureParams.get('rotateModeGroup') or ''
+            commandChain.append('-vf transpose={}'.format(rotateModeGroup))
+        elif self.feature == 'CROP':
+            cropTbx = self.featureParams.get('cropTbx') or ''
+            commandChain.append('-vf crop={}'.format(cropTbx))
+
+        if self.generalParams.get('copyAudioChk'):
+            commandChain.append('-c:a copy')
+        if self.generalParams.get('overwriteChk'):
+            commandChain.append('-y')
+
+        if self.paths and len(self.paths) > 0:
+            output = self.getOutput(self.paths[0], self.feature)
+            commandChain.append('"{}"'.format(output.get('path')))
+
+        return ' '.join(commandChain)
 
 
 class Controller():
@@ -161,13 +195,18 @@ class Controller():
         self.view.connectSignals(self.handleEvents)
         self.view.addDragDropFileHandler(self.handleDragDropFile)
 
+        self.process = None
+
     def handleEvents(self, value) -> None:
         objectName = self.view.sender().objectName()
 
-        if objectName === 'executeBtn':
+        if objectName == 'executeBtn':
             command = self.view.getCommand()
             self.executeCommand(command)
         else:
+            if objectName == 'featureSelectorCbb':
+                self.view.showFeatureOptions(list(META.keys())[value])
+
             command = self.model.createCommand(objectName, value)
             self.view.setCommand(command)
 
@@ -175,8 +214,36 @@ class Controller():
         command = self.model.createCommand('dragDropFile', paths)
         self.view.setCommand(command)
 
-    def executeCommand(self, command) -> None:
-        pass
+    def executeCommand(self, command: str) -> None:
+        self.process = QProcess()
+        self.process.readyReadStandardOutput.connect(self.handleOutput)
+        self.process.readyReadStandardError.connect(self.handleError)
+        self.process.stateChanged.connect(self.handleStateChange)
+        self.process.finished.connect(self.handleFinish)
+        if command.startswith('ffmpeg'):
+            self.process.start(command)
+
+    def handleOutput(self) -> None:
+        outputStream = self.process.readAllStandardOutput()
+        stdout = bytes(outputStream).decode('utf8')
+        print(stdout)
+
+    def handleError(self) -> None:
+        errorStream = self.process.readAllStandardError()
+        stderr = bytes(errorStream).decode('utf8')
+        print(stderr)
+
+    def handleStateChange(self, state) -> None:
+        if state == QProcess.ProcessState.NotRunning:
+            pass
+        elif state == QProcess.ProcessState.Starting:
+            pass
+        elif state == QProcess.ProcessState.Running:
+            pass
+
+    def handleFinish(self) -> None:
+        print("Finish")
+        self.process = None
 
 
 class DragDropFileWidget(QWidget):
@@ -283,14 +350,33 @@ class FeatureSelectorComponent(Component):
 class FeatureOptionComponent(Component):
     def _createWidgets(self) -> None:
         self.cropFeatureOptionCpn = CropFeatureOptionComponent()
-        self.layout.addLayout(self.cropFeatureOptionCpn.layout, 0, 0)
+        self.cropFeatureOptionWrapper = QWidget()
+        self.cropFeatureOptionWrapper.setLayout(
+            self.cropFeatureOptionCpn.layout)
+        self.layout.addWidget(self.cropFeatureOptionWrapper, 0, 0)
 
         self.rotateFeatureOptionCpn = RotateFeatureOptionComponent()
-        self.layout.addLayout(self.rotateFeatureOptionCpn.layout, 1, 0)
+        self.rotateFeatureOptionWrapper = QWidget()
+        self.rotateFeatureOptionWrapper.setLayout(
+            self.rotateFeatureOptionCpn.layout)
+        self.layout.addWidget(self.rotateFeatureOptionWrapper, 1, 0)
+
+        self.hideAllWidgets()
 
     def _connectSignals(self, handler) -> None:
         self.cropFeatureOptionCpn._connectSignals(handler)
         self.rotateFeatureOptionCpn._connectSignals(handler)
+
+    def showFeatureOptions(self, feature) -> None:
+        self.hideAllWidgets()
+        if feature == 'CROP':
+            self.cropFeatureOptionWrapper.show()
+        elif feature == 'ROTATE':
+            self.rotateFeatureOptionWrapper.show()
+
+    def hideAllWidgets(self) -> None:
+        self.cropFeatureOptionWrapper.hide()
+        self.rotateFeatureOptionWrapper.hide()
 
 
 class CropFeatureOptionComponent(Component):
@@ -298,13 +384,13 @@ class CropFeatureOptionComponent(Component):
         self.layout = QFormLayout()
 
     def _createWidgets(self) -> None:
-        self.cropTxb = QLineEdit()
-        self.cropTxb.setObjectName('cropTxb')
-        self.cropTxb.setPlaceholderText('w:h:x:y')
-        self.layout.addRow('Crop:', self.cropTxb)
+        self.cropTbx = QLineEdit()
+        self.cropTbx.setObjectName('cropTbx')
+        self.cropTbx.setPlaceholderText('w:h:x:y')
+        self.layout.addRow('Crop:', self.cropTbx)
 
     def _connectSignals(self, handler) -> None:
-        self.cropTxb.textChanged.connect(handler)
+        self.cropTbx.textChanged.connect(handler)
 
 
 class RotateFeatureOptionComponent(Component):
@@ -323,7 +409,7 @@ class RotateFeatureOptionComponent(Component):
         self.layout.addRow('Rotate mode:', rotateModeLayout)
 
     def _connectSignals(self, handler) -> None:
-        self.rotateModeGroup.buttonToggled.connect(handler)
+        self.rotateModeGroup.idToggled.connect(handler)
 
 
 if __name__ == '__main__':
