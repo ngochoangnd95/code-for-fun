@@ -4,9 +4,9 @@ from pathlib import Path
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtCore import QProcess
 from PyQt5.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox,
-                             QDesktopWidget, QFormLayout, QGridLayout,
+                             QDesktopWidget, QDialog, QDialogButtonBox, QFormLayout, QGridLayout,
                              QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-                             QMainWindow, QPushButton, QRadioButton,
+                             QMainWindow, QProgressDialog, QPushButton, QRadioButton,
                              QVBoxLayout, QWidget)
 
 META = {
@@ -196,6 +196,7 @@ class Controller():
         self.view.addDragDropFileHandler(self.handleDragDropFile)
 
         self.process = None
+        self.dialog = None
 
     def handleEvents(self, value) -> None:
         objectName = self.view.sender().objectName()
@@ -237,11 +238,16 @@ class Controller():
         if state == QProcess.ProcessState.NotRunning:
             pass
         elif state == QProcess.ProcessState.Starting:
-            pass
+            self.dialog = QProgressDialog(self.view)
+            self.dialog.setMinimum(0)
+            self.dialog.setMaximum(100)
+            self.dialog.setModal(True)
+            self.dialog.show()
         elif state == QProcess.ProcessState.Running:
             pass
 
     def handleFinish(self) -> None:
+        self.dialog.cancel()
         print("Finish")
         self.process = None
 
