@@ -6,7 +6,7 @@ from PyQt5.QtCore import QProcess
 from PyQt5.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox,
                              QDesktopWidget, QDialog, QDialogButtonBox, QFormLayout, QGridLayout,
                              QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-                             QMainWindow, QProgressDialog, QPushButton, QRadioButton,
+                             QMainWindow, QPushButton, QRadioButton,
                              QVBoxLayout, QWidget)
 
 META = {
@@ -52,7 +52,6 @@ ROTATE_MODE = (
 
 class Component():
     def __init__(self) -> None:
-        super().__init__()
         self.layout = None
         self._setLayout()
         self._createWidgets()
@@ -127,19 +126,20 @@ class Model():
         self.featureParams = {}
         self.forceFormat = ''
 
-    def setValueToState(self, objectName, value) -> None:
-        if objectName == 'dragDropFile':
-            self.paths = value
-        elif objectName == 'featureSelectorCbb':
-            self.feature = self.metaKeys[value]
-        elif objectName == 'copyAudioChk' or objectName == 'overwriteChk':
-            self.generalParams[objectName] = value
-        elif objectName == 'cropTbx':
-            self.featureParams = {}
-            self.featureParams[objectName] = value
-        elif objectName == 'rotateModeGroup':
-            self.featureParams = {}
-            self.featureParams[objectName] = value
+    def setValueToState(self, events: dict) -> None:
+        for objectName, value in events.items():
+            if objectName == 'dragDropFile':
+                self.paths = value
+            elif objectName == 'featureSelectorCbb':
+                self.feature = self.metaKeys[value]
+            elif objectName == 'copyAudioChk' or objectName == 'overwriteChk':
+                self.generalParams[objectName] = value
+            elif objectName == 'cropTbx':
+                self.featureParams = {}
+                self.featureParams[objectName] = value
+            elif objectName == 'rotateModeGroup':
+                self.featureParams = {}
+                self.featureParams[objectName] = value
 
     def getOutput(self, inputPath, suffix) -> dict:
         inputFileName = Path(inputPath).stem
@@ -148,8 +148,8 @@ class Model():
         outputFilePath = Path(directory).joinpath(outputFileName).__str__()
         return {'name': outputFileName, 'path': outputFilePath}
 
-    def createCommand(self, objectName, value) -> str:
-        self.setValueToState(objectName, value)
+    def createCommand(self, events: dict) -> str:
+        self.setValueToState(events)
 
         commandChain = ['ffmpeg']
 
@@ -196,7 +196,18 @@ class Controller():
         self.view.addDragDropFileHandler(self.handleDragDropFile)
 
         self.process = None
-        self.dialog = None
+
+        self.dialog = Dialog(self.view)
+        self.dialog.setModal(True)
+        self.dialog.connectSignals(self.handleDialogReject)
+
+        self.setInitialStates()
+
+    def setInitialStates(self) -> None:
+        self.view.commandCpn.commandOptionCpn.copyAudioChk.setChecked(True)
+        self.model.createCommand({
+            'copyAudioChk': True
+        })
 
     def handleEvents(self, value) -> None:
         objectName = self.view.sender().objectName()
@@ -208,11 +219,11 @@ class Controller():
             if objectName == 'featureSelectorCbb':
                 self.view.showFeatureOptions(list(META.keys())[value])
 
-            command = self.model.createCommand(objectName, value)
+            command = self.model.createCommand({objectName: value})
             self.view.setCommand(command)
 
     def handleDragDropFile(self, paths) -> None:
-        command = self.model.createCommand('dragDropFile', paths)
+        command = self.model.createCommand({'dragDropFile': paths})
         self.view.setCommand(command)
 
     def executeCommand(self, command: str) -> None:
@@ -238,18 +249,36 @@ class Controller():
         if state == QProcess.ProcessState.NotRunning:
             pass
         elif state == QProcess.ProcessState.Starting:
-            self.dialog = QProgressDialog(self.view)
-            self.dialog.setMinimum(0)
-            self.dialog.setMaximum(100)
-            self.dialog.setModal(True)
             self.dialog.show()
         elif state == QProcess.ProcessState.Running:
             pass
 
     def handleFinish(self) -> None:
-        self.dialog.cancel()
-        print("Finish")
+        self.dialog.reject()
         self.process = None
+
+    def handleDialogReject(self) -> None:
+        self.dialog.reject()
+        self.process.kill()
+        self.process = None
+
+
+class Dialog(QDialog):
+    def __init__(self, parent) -> None:
+        super().__init__(parent)
+        self.layout = QVBoxLayout()
+
+        label = QLabel("FFmpeg command is executing")
+        self.layout.addWidget(label)
+
+        self.buttonBox = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Cancel)
+        self.layout.addWidget(self.buttonBox)
+
+        self.setLayout(self.layout)
+
+    def connectSignals(self, handler) -> None:
+        self.buttonBox.rejected.connect(handler)
 
 
 class DragDropFileWidget(QWidget):
