@@ -70,6 +70,11 @@ class Component():
         groupBox.setLayout(self.layout)
         return groupBox
 
+    def _wrapInWidget(self) -> QWidget:
+        wrapper = QWidget()
+        wrapper.setLayout(self.layout)
+        return wrapper
+
 
 class View(QMainWindow):
     def __init__(self) -> None:
@@ -134,6 +139,9 @@ class Model():
                 self.feature = self.metaKeys[value]
             elif objectName == 'copyAudioChk' or objectName == 'overwriteChk':
                 self.generalParams[objectName] = value
+            elif objectName == 'blankRectangle':
+                self.featureParams = {}
+                self.featureParams[objectName] = value
             elif objectName == 'cropTbx':
                 self.featureParams = {}
                 self.featureParams[objectName] = value
@@ -167,8 +175,8 @@ class Model():
         elif self.feature == 'CONCAT':
             pass
         elif self.feature == 'RMBLBAR':
-            cropBlank = self.featureParams.get('cropBlank') or ''
-            commandChain.append('-vf crop={}'.format(cropBlank))
+            blankRectangle = self.featureParams.get('blankRectangle') or ''
+            commandChain.append('-vf crop={}'.format(blankRectangle))
         elif self.feature == 'ROTATE':
             rotateModeGroup = self.featureParams.get('rotateModeGroup') or ''
             commandChain.append('-vf transpose={}'.format(rotateModeGroup))
@@ -187,10 +195,10 @@ class Model():
 
         return ' '.join(commandChain)
 
-    def __getBlankRectangle(self, input: str) -> str:
+    def getBlankRectangle(self, input: str) -> str:
         pos1 = input.rfind('crop=') + 5
-        pos2 = input.find('fname=', pos1)
-        blankRectangle = input[pos1:pos2].replace('\\r\\n', '')
+        pos2 = input.find('frame=', pos1)
+        blankRectangle = input[pos1:pos2].rstrip()
         return blankRectangle
 
 
@@ -202,7 +210,13 @@ class Controller():
         self.view.connectSignals(self.handleEvents)
         self.view.addDragDropFileHandler(self.handleDragDropFile)
 
-        self.customProcess = None
+        self.process = None
+
+        self.log = ''
+
+        self.dialog = Dialog(self.view)
+        self.dialog.setModal(True)
+        self.dialog.connectSignals(self.handleDialogReject)
 
         self.setInitialStates()
 
@@ -237,45 +251,29 @@ class Controller():
         self.view.setCommand(command)
 
     def executeCommand(self, command: str) -> None:
-        self.customProcess = CustomProcess(self.view, self.model)
-        if command.startswith('ffmpeg'):
-            self.customProcess.start(command)
-
-
-class CustomProcess():
-    def __init__(self, view: View, model: Model) -> None:
-        self.view = view
-        self.model = model
-
-        self.process = None
-
-        self.dialog = Dialog(self.view)
-        self.dialog.setModal(True)
-        self.dialog.connectSignals(self.handleDialogReject)
-
-    def start(self, command: str) -> None:
         self.process = QProcess()
         self.process.readyReadStandardOutput.connect(self.handleOutput)
         self.process.readyReadStandardError.connect(self.handleError)
         self.process.stateChanged.connect(self.handleStateChange)
         self.process.finished.connect(self.handleFinish)
-        if command:
+        if command.startswith('ffmpeg'):
             self.process.start(command)
 
     def handleOutput(self) -> None:
         outputStream = self.process.readAllStandardOutput()
         stdout = bytes(outputStream).decode('utf8')
-        print(stdout)
+        self.log += stdout
 
     def handleError(self) -> None:
         errorStream = self.process.readAllStandardError()
         stderr = bytes(errorStream).decode('utf8')
-        print(stderr)
+        self.log += stderr
 
     def handleStateChange(self, state) -> None:
         if state == QProcess.ProcessState.NotRunning:
             pass
         elif state == QProcess.ProcessState.Starting:
+            self.log = ''
             self.dialog.show()
         elif state == QProcess.ProcessState.Running:
             pass
@@ -283,6 +281,12 @@ class CustomProcess():
     def handleFinish(self) -> None:
         self.dialog.reject()
         self.process = None
+
+        if self.model.feature == 'RMBLBAR':
+            blankRectangle = self.model.getBlankRectangle(self.log)
+            command = self.model.createCommand(
+                {'blankRectangle': blankRectangle})
+            self.view.setCommand(command)
 
     def handleDialogReject(self) -> None:
         self.dialog.reject()
@@ -415,26 +419,21 @@ class FeatureOptionComponent(Component):
 
     def _createWidgets(self) -> None:
         self.rmBlBarFeatureOptionCpn = RmBlBarFeatureOptionComponent()
-        self.rmBlBarFeatureOptionWrapper = QWidget()
-        self.rmBlBarFeatureOptionWrapper.setLayout(
-            self.rmBlBarFeatureOptionCpn.layout)
+        self.rmBlBarFeatureOptionWrapper = self.rmBlBarFeatureOptionCpn._wrapInWidget()
         self.layout.addWidget(self.rmBlBarFeatureOptionWrapper)
 
         self.cropFeatureOptionCpn = CropFeatureOptionComponent()
-        self.cropFeatureOptionWrapper = QWidget()
-        self.cropFeatureOptionWrapper.setLayout(
-            self.cropFeatureOptionCpn.layout)
+        self.cropFeatureOptionWrapper = self.cropFeatureOptionCpn._wrapInWidget()
         self.layout.addWidget(self.cropFeatureOptionWrapper)
 
         self.rotateFeatureOptionCpn = RotateFeatureOptionComponent()
-        self.rotateFeatureOptionWrapper = QWidget()
-        self.rotateFeatureOptionWrapper.setLayout(
-            self.rotateFeatureOptionCpn.layout)
+        self.rotateFeatureOptionWrapper = self.rotateFeatureOptionCpn._wrapInWidget()
         self.layout.addWidget(self.rotateFeatureOptionWrapper)
 
         self.hideAllWidgets()
 
     def _connectSignals(self, handler) -> None:
+        self.rmBlBarFeatureOptionCpn._connectSignals(handler)
         self.cropFeatureOptionCpn._connectSignals(handler)
         self.rotateFeatureOptionCpn._connectSignals(handler)
 
