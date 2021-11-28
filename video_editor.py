@@ -139,6 +139,9 @@ class Model():
                 self.feature = self.metaKeys[value]
             elif objectName == 'copyAudioChk' or objectName == 'overwriteChk':
                 self.generalParams[objectName] = value
+            elif objectName == 'fromTimeTbx' or objectName == 'toTimeTbx':
+                self.featureParams = {}
+                self.featureParams[objectName] = value
             elif objectName == 'blankRectangle':
                 self.featureParams = {}
                 self.featureParams[objectName] = value
@@ -171,7 +174,12 @@ class Model():
         if self.feature == 'FORMAT':
             pass
         elif self.feature == 'CUT':
-            pass
+            fromTime = self.featureParams.get('fromTimeTbx')
+            if fromTime:
+                commandChain.append('-ss {}'.format(fromTime))
+            toTime = self.featureParams.get('toTimeTbx')
+            if toTime:
+                commandChain.append('-to {}'.format(toTime))
         elif self.feature == 'CONCAT':
             pass
         elif self.feature == 'RMBLBAR':
@@ -181,8 +189,8 @@ class Model():
             rotateModeGroup = self.featureParams.get('rotateModeGroup') or ''
             commandChain.append('-vf transpose={}'.format(rotateModeGroup))
         elif self.feature == 'CROP':
-            cropTbx = self.featureParams.get('cropTbx') or ''
-            commandChain.append('-vf crop={}'.format(cropTbx))
+            cropRectangle = self.featureParams.get('cropTbx') or ''
+            commandChain.append('-vf crop={}'.format(cropRectangle))
 
         if self.generalParams.get('copyAudioChk'):
             commandChain.append('-c:a copy')
@@ -363,7 +371,7 @@ class CommandComponent(Component):
 
         self.executeBtn = QPushButton('Execute')
         self.executeBtn.setObjectName('executeBtn')
-        self.executeBtn.setStyleSheet('font-size: 18px;')
+        self.executeBtn.setStyleSheet('font-size: 21px;')
         self.layout.addWidget(self.executeBtn, 0, 1)
 
         self.commandOptionCpn = CommandOptionComponent()
@@ -402,7 +410,7 @@ class FeatureSelectorComponent(Component):
     def _createWidgets(self) -> None:
         self.featureSelectorCbb = QComboBox()
         self.featureSelectorCbb.setObjectName('featureSelectorCbb')
-        self.featureSelectorCbb.setStyleSheet('font-size: 15px;')
+        self.featureSelectorCbb.setStyleSheet('font-size: 21px;')
         self.featureSelectorCbb.addItems(
             [META[key]["label"] for key in META])
         self.layout.addWidget(self.featureSelectorCbb)
@@ -418,6 +426,10 @@ class FeatureOptionComponent(Component):
         self.layout = QVBoxLayout()
 
     def _createWidgets(self) -> None:
+        self.cutFeatureOptionCpn = CutFeatureOptionComponent()
+        self.cutFeatureOptionWrapper = self.cutFeatureOptionCpn._wrapInWidget()
+        self.layout.addWidget(self.cutFeatureOptionWrapper)
+
         self.rmBlBarFeatureOptionCpn = RmBlBarFeatureOptionComponent()
         self.rmBlBarFeatureOptionWrapper = self.rmBlBarFeatureOptionCpn._wrapInWidget()
         self.layout.addWidget(self.rmBlBarFeatureOptionWrapper)
@@ -433,13 +445,16 @@ class FeatureOptionComponent(Component):
         self.hideAllWidgets()
 
     def _connectSignals(self, handler) -> None:
+        self.cutFeatureOptionCpn._connectSignals(handler)
         self.rmBlBarFeatureOptionCpn._connectSignals(handler)
         self.cropFeatureOptionCpn._connectSignals(handler)
         self.rotateFeatureOptionCpn._connectSignals(handler)
 
     def showFeatureOptions(self, feature) -> None:
         self.hideAllWidgets()
-        if feature == 'RMBLBAR':
+        if feature == 'CUT':
+            self.cutFeatureOptionWrapper.show()
+        elif feature == 'RMBLBAR':
             self.rmBlBarFeatureOptionWrapper.show()
         elif feature == 'CROP':
             self.cropFeatureOptionWrapper.show()
@@ -447,9 +462,31 @@ class FeatureOptionComponent(Component):
             self.rotateFeatureOptionWrapper.show()
 
     def hideAllWidgets(self) -> None:
+        self.cutFeatureOptionWrapper.hide()
         self.rmBlBarFeatureOptionWrapper.hide()
         self.cropFeatureOptionWrapper.hide()
         self.rotateFeatureOptionWrapper.hide()
+
+
+class CutFeatureOptionComponent(Component):
+    def _createWidgets(self) -> None:
+        self.fromTimeTbx = QLineEdit()
+        self.fromTimeTbx.setObjectName('fromTimeTbx')
+        self.fromTimeTbx.setPlaceholderText('hh:mm:ss.ms')
+        fromTimeSubLayout = QFormLayout()
+        fromTimeSubLayout.addRow('From:', self.fromTimeTbx)
+        self.layout.addLayout(fromTimeSubLayout, 0, 0)
+
+        self.toTimeTbx = QLineEdit()
+        self.toTimeTbx.setObjectName('toTimeTbx')
+        self.toTimeTbx.setPlaceholderText('hh:mm:ss.ms')
+        toTimeSubLayout = QFormLayout()
+        toTimeSubLayout.addRow('To:', self.toTimeTbx)
+        self.layout.addLayout(toTimeSubLayout, 0, 1)
+
+    def _connectSignals(self, handler) -> None:
+        self.fromTimeTbx.textChanged.connect(handler)
+        self.toTimeTbx.textChanged.connect(handler)
 
 
 class RmBlBarFeatureOptionComponent(Component):
