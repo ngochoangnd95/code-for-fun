@@ -167,7 +167,8 @@ class Model():
         elif self.feature == 'CONCAT':
             pass
         elif self.feature == 'RMBLBAR':
-            pass
+            cropBlank = self.featureParams.get('cropBlank') or ''
+            commandChain.append('-vf crop={}'.format(cropBlank))
         elif self.feature == 'ROTATE':
             rotateModeGroup = self.featureParams.get('rotateModeGroup') or ''
             commandChain.append('-vf transpose={}'.format(rotateModeGroup))
@@ -186,6 +187,12 @@ class Model():
 
         return ' '.join(commandChain)
 
+    def __getBlankRectangle(self, input: str) -> str:
+        pos1 = input.rfind('crop=') + 5
+        pos2 = input.find('fname=', pos1)
+        blankRectangle = input[pos1:pos2].replace('\\r\\n', '')
+        return blankRectangle
+
 
 class Controller():
     def __init__(self, view: View, model: Model) -> None:
@@ -195,17 +202,13 @@ class Controller():
         self.view.connectSignals(self.handleEvents)
         self.view.addDragDropFileHandler(self.handleDragDropFile)
 
-        self.process = None
-
-        self.dialog = Dialog(self.view)
-        self.dialog.setModal(True)
-        self.dialog.connectSignals(self.handleDialogReject)
+        self.customProcess = None
 
         self.setInitialStates()
 
     def setInitialStates(self) -> None:
         self.view.commandCpn.commandOptionCpn.copyAudioChk.setChecked(True)
-        self.model.createCommand({
+        self.model.setValueToState({
             'copyAudioChk': True
         })
 
@@ -215,6 +218,13 @@ class Controller():
         if objectName == 'executeBtn':
             command = self.view.getCommand()
             self.executeCommand(command)
+        elif objectName == 'cropBlankBtn':
+            paths = self.model.paths
+            if paths and len(paths) > 0:
+                command = 'ffmpeg -i {} -ss 60 -vframes 10 -vf cropdetect -f null -'.format(
+                    paths[0])
+                # self.view.setCommand(command)
+                self.executeCommand(command)
         else:
             if objectName == 'featureSelectorCbb':
                 self.view.showFeatureOptions(list(META.keys())[value])
@@ -227,12 +237,29 @@ class Controller():
         self.view.setCommand(command)
 
     def executeCommand(self, command: str) -> None:
+        self.customProcess = CustomProcess(self.view, self.model)
+        if command.startswith('ffmpeg'):
+            self.customProcess.start(command)
+
+
+class CustomProcess():
+    def __init__(self, view: View, model: Model) -> None:
+        self.view = view
+        self.model = model
+
+        self.process = None
+
+        self.dialog = Dialog(self.view)
+        self.dialog.setModal(True)
+        self.dialog.connectSignals(self.handleDialogReject)
+
+    def start(self, command: str) -> None:
         self.process = QProcess()
         self.process.readyReadStandardOutput.connect(self.handleOutput)
         self.process.readyReadStandardError.connect(self.handleError)
         self.process.stateChanged.connect(self.handleStateChange)
         self.process.finished.connect(self.handleFinish)
-        if command.startswith('ffmpeg'):
+        if command:
             self.process.start(command)
 
     def handleOutput(self) -> None:
@@ -383,18 +410,27 @@ class FeatureSelectorComponent(Component):
 
 
 class FeatureOptionComponent(Component):
+    def _setLayout(self) -> None:
+        self.layout = QVBoxLayout()
+
     def _createWidgets(self) -> None:
+        self.rmBlBarFeatureOptionCpn = RmBlBarFeatureOptionComponent()
+        self.rmBlBarFeatureOptionWrapper = QWidget()
+        self.rmBlBarFeatureOptionWrapper.setLayout(
+            self.rmBlBarFeatureOptionCpn.layout)
+        self.layout.addWidget(self.rmBlBarFeatureOptionWrapper)
+
         self.cropFeatureOptionCpn = CropFeatureOptionComponent()
         self.cropFeatureOptionWrapper = QWidget()
         self.cropFeatureOptionWrapper.setLayout(
             self.cropFeatureOptionCpn.layout)
-        self.layout.addWidget(self.cropFeatureOptionWrapper, 0, 0)
+        self.layout.addWidget(self.cropFeatureOptionWrapper)
 
         self.rotateFeatureOptionCpn = RotateFeatureOptionComponent()
         self.rotateFeatureOptionWrapper = QWidget()
         self.rotateFeatureOptionWrapper.setLayout(
             self.rotateFeatureOptionCpn.layout)
-        self.layout.addWidget(self.rotateFeatureOptionWrapper, 1, 0)
+        self.layout.addWidget(self.rotateFeatureOptionWrapper)
 
         self.hideAllWidgets()
 
@@ -404,14 +440,34 @@ class FeatureOptionComponent(Component):
 
     def showFeatureOptions(self, feature) -> None:
         self.hideAllWidgets()
-        if feature == 'CROP':
+        if feature == 'RMBLBAR':
+            self.rmBlBarFeatureOptionWrapper.show()
+        elif feature == 'CROP':
             self.cropFeatureOptionWrapper.show()
         elif feature == 'ROTATE':
             self.rotateFeatureOptionWrapper.show()
 
     def hideAllWidgets(self) -> None:
+        self.rmBlBarFeatureOptionWrapper.hide()
         self.cropFeatureOptionWrapper.hide()
         self.rotateFeatureOptionWrapper.hide()
+
+
+class RmBlBarFeatureOptionComponent(Component):
+    def _createWidgets(self) -> None:
+        self.cropBlankBtn = QPushButton('Get blank bar rectangle')
+        self.cropBlankBtn.setObjectName('cropBlankBtn')
+        self.layout.addWidget(self.cropBlankBtn, 0, 0)
+
+        label = QLabel('-->')
+        self.layout.addWidget(label, 0, 1)
+
+        self.cropBlankTbx = QLineEdit()
+        self.cropBlankTbx.setReadOnly(True)
+        self.layout.addWidget(self.cropBlankTbx, 0, 2)
+
+    def _connectSignals(self, handler) -> None:
+        self.cropBlankBtn.clicked.connect(handler)
 
 
 class CropFeatureOptionComponent(Component):
