@@ -50,11 +50,14 @@ ROTATE_MODE = (
 )
 
 
-class Component():
-    def __init__(self) -> None:
-        self.layout = None
+class Component(QWidget):
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+
         self._setLayout()
         self._createWidgets()
+
+        self.setLayout(self.layout)
 
     def _setLayout(self) -> None:
         self.layout = QGridLayout()
@@ -62,18 +65,13 @@ class Component():
     def _createWidgets(self) -> None:
         pass
 
-    def _connectSignals(self, handler) -> None:
+    def _connectSlots(self, handler) -> None:
         pass
 
-    def _wrapInGroupBox(self) -> QGroupBox:
+    def _wrapInGroupBox(self) -> None:
         groupBox = QGroupBox()
         groupBox.setLayout(self.layout)
         return groupBox
-
-    def _wrapInWidget(self) -> QWidget:
-        wrapper = QWidget()
-        wrapper.setLayout(self.layout)
-        return wrapper
 
 
 class View(QMainWindow):
@@ -104,10 +102,10 @@ class View(QMainWindow):
 
         self.centralWidget.setLayout(layout)
 
-    def connectSignals(self, handler) -> None:
-        self.commandCpn._connectSignals(handler)
-        self.featureSelectorCpn._connectSignals(handler)
-        self.featureOptionCpn._connectSignals(handler)
+    def connectSlots(self, handler) -> None:
+        self.commandCpn._connectSlots(handler)
+        self.featureSelectorCpn._connectSlots(handler)
+        self.featureOptionCpn._connectSlots(handler)
 
     def addDragDropFileHandler(self, handler) -> None:
         self.centralWidget._addDragDropFileHandler(handler)
@@ -215,7 +213,7 @@ class Controller():
         self.view = view
         self.model = model
 
-        self.view.connectSignals(self.handleEvents)
+        self.view.connectSlots(self.handleEvents)
         self.view.addDragDropFileHandler(self.handleDragDropFile)
 
         self.process = None
@@ -375,17 +373,18 @@ class CommandComponent(Component):
         self.layout.addWidget(self.executeBtn, 0, 1)
 
         self.commandOptionCpn = CommandOptionComponent()
-        self.layout.addLayout(self.commandOptionCpn.layout, 1, 0)
+        self.layout.addWidget(self.commandOptionCpn, 1, 0)
 
-    def _connectSignals(self, handler) -> None:
+    def _connectSlots(self, handler) -> None:
         self.commandTxb.textChanged.connect(handler)
         self.executeBtn.clicked.connect(handler)
-        self.commandOptionCpn._connectSignals(handler)
+        self.commandOptionCpn._connectSlots(handler)
 
 
 class CommandOptionComponent(Component):
     def _setLayout(self) -> None:
         self.layout = QHBoxLayout()
+        self.layout.setContentsMargins(0, 0, 0, 0)
 
     def _createWidgets(self) -> None:
         self.copyAudioChk = QCheckBox('Copy audio stream')
@@ -398,7 +397,7 @@ class CommandOptionComponent(Component):
 
         self.layout.addStretch()
 
-    def _connectSignals(self, handler) -> None:
+    def _connectSlots(self, handler) -> None:
         self.copyAudioChk.toggled.connect(handler)
         self.overwriteChk.toggled.connect(handler)
 
@@ -417,55 +416,52 @@ class FeatureSelectorComponent(Component):
 
         self.layout.addStretch()
 
-    def _connectSignals(self, handler) -> None:
+    def _connectSlots(self, handler) -> None:
         self.featureSelectorCbb.activated[int].connect(handler)
 
 
 class FeatureOptionComponent(Component):
     def _setLayout(self) -> None:
         self.layout = QVBoxLayout()
+        self.layout.setContentsMargins(0, 0, 0, 0)
 
     def _createWidgets(self) -> None:
         self.cutFeatureOptionCpn = CutFeatureOptionComponent()
-        self.cutFeatureOptionWrapper = self.cutFeatureOptionCpn._wrapInWidget()
-        self.layout.addWidget(self.cutFeatureOptionWrapper)
+        self.layout.addWidget(self.cutFeatureOptionCpn)
 
         self.rmBlBarFeatureOptionCpn = RmBlBarFeatureOptionComponent()
-        self.rmBlBarFeatureOptionWrapper = self.rmBlBarFeatureOptionCpn._wrapInWidget()
-        self.layout.addWidget(self.rmBlBarFeatureOptionWrapper)
+        self.layout.addWidget(self.rmBlBarFeatureOptionCpn)
 
         self.cropFeatureOptionCpn = CropFeatureOptionComponent()
-        self.cropFeatureOptionWrapper = self.cropFeatureOptionCpn._wrapInWidget()
-        self.layout.addWidget(self.cropFeatureOptionWrapper)
+        self.layout.addWidget(self.cropFeatureOptionCpn)
 
         self.rotateFeatureOptionCpn = RotateFeatureOptionComponent()
-        self.rotateFeatureOptionWrapper = self.rotateFeatureOptionCpn._wrapInWidget()
-        self.layout.addWidget(self.rotateFeatureOptionWrapper)
+        self.layout.addWidget(self.rotateFeatureOptionCpn)
 
         self.hideAllWidgets()
 
-    def _connectSignals(self, handler) -> None:
-        self.cutFeatureOptionCpn._connectSignals(handler)
-        self.rmBlBarFeatureOptionCpn._connectSignals(handler)
-        self.cropFeatureOptionCpn._connectSignals(handler)
-        self.rotateFeatureOptionCpn._connectSignals(handler)
+    def _connectSlots(self, handler) -> None:
+        self.cutFeatureOptionCpn._connectSlots(handler)
+        self.rmBlBarFeatureOptionCpn._connectSlots(handler)
+        self.cropFeatureOptionCpn._connectSlots(handler)
+        self.rotateFeatureOptionCpn._connectSlots(handler)
 
     def showFeatureOptions(self, feature) -> None:
         self.hideAllWidgets()
         if feature == 'CUT':
-            self.cutFeatureOptionWrapper.show()
+            self.cutFeatureOptionCpn.show()
         elif feature == 'RMBLBAR':
-            self.rmBlBarFeatureOptionWrapper.show()
+            self.rmBlBarFeatureOptionCpn.show()
         elif feature == 'CROP':
-            self.cropFeatureOptionWrapper.show()
+            self.cropFeatureOptionCpn.show()
         elif feature == 'ROTATE':
-            self.rotateFeatureOptionWrapper.show()
+            self.rotateFeatureOptionCpn.show()
 
     def hideAllWidgets(self) -> None:
-        self.cutFeatureOptionWrapper.hide()
-        self.rmBlBarFeatureOptionWrapper.hide()
-        self.cropFeatureOptionWrapper.hide()
-        self.rotateFeatureOptionWrapper.hide()
+        self.cutFeatureOptionCpn.hide()
+        self.rmBlBarFeatureOptionCpn.hide()
+        self.cropFeatureOptionCpn.hide()
+        self.rotateFeatureOptionCpn.hide()
 
 
 class CutFeatureOptionComponent(Component):
@@ -484,7 +480,7 @@ class CutFeatureOptionComponent(Component):
         toTimeSubLayout.addRow('To:', self.toTimeTbx)
         self.layout.addLayout(toTimeSubLayout, 0, 1)
 
-    def _connectSignals(self, handler) -> None:
+    def _connectSlots(self, handler) -> None:
         self.fromTimeTbx.textChanged.connect(handler)
         self.toTimeTbx.textChanged.connect(handler)
 
@@ -502,7 +498,7 @@ class RmBlBarFeatureOptionComponent(Component):
         self.cropBlankTbx.setReadOnly(True)
         self.layout.addWidget(self.cropBlankTbx, 0, 2)
 
-    def _connectSignals(self, handler) -> None:
+    def _connectSlots(self, handler) -> None:
         self.cropBlankBtn.clicked.connect(handler)
 
 
@@ -516,7 +512,7 @@ class CropFeatureOptionComponent(Component):
         self.cropTbx.setPlaceholderText('w:h:x:y')
         self.layout.addRow('Crop:', self.cropTbx)
 
-    def _connectSignals(self, handler) -> None:
+    def _connectSlots(self, handler) -> None:
         self.cropTbx.textChanged.connect(handler)
 
 
@@ -535,7 +531,7 @@ class RotateFeatureOptionComponent(Component):
 
         self.layout.addRow('Rotate mode:', rotateModeLayout)
 
-    def _connectSignals(self, handler) -> None:
+    def _connectSlots(self, handler) -> None:
         self.rotateModeGroup.idToggled.connect(handler)
 
 
