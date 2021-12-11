@@ -2,11 +2,11 @@ import sys
 from pathlib import Path
 
 from PyQt5 import QtCore, QtGui
-from PyQt5.QtCore import QProcess
+from PyQt5.QtCore import QProcess, QTime
 from PyQt5.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox,
                              QDesktopWidget, QDialog, QDialogButtonBox, QFormLayout, QGridLayout,
                              QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-                             QMainWindow, QPushButton, QRadioButton,
+                             QMainWindow, QPushButton, QRadioButton, QTimeEdit,
                              QVBoxLayout, QWidget)
 
 META = {
@@ -110,11 +110,14 @@ class View(QMainWindow):
     def addDragDropFileHandler(self, handler) -> None:
         self.centralWidget._addDragDropFileHandler(handler)
 
-    def setCommand(self, command) -> None:
-        self.commandCpn.commandTxb.setText(command)
+    def setCommand(self, value) -> None:
+        self.commandCpn.commandTxb.setText(value)
 
     def getCommand(self) -> str:
         return self.commandCpn.commandTxb.text()
+
+    def setBlankRectangle(self, value) -> None:
+        self.featureOptionCpn.rmBlBarFeatureOptionCpn.cropBlankTbx.setText(value)
 
     def showFeatureOptions(self, feature) -> None:
         self.featureOptionCpn.showFeatureOptions(feature)
@@ -135,19 +138,10 @@ class Model():
                 self.paths = value
             elif objectName == 'featureSelectorCbb':
                 self.feature = self.metaKeys[value]
+                self.featureParams = {}
             elif objectName == 'copyAudioChk' or objectName == 'overwriteChk':
                 self.generalParams[objectName] = value
             elif objectName == 'fromTimeTbx' or objectName == 'toTimeTbx':
-                self.featureParams = {}
-                self.featureParams[objectName] = value
-            elif objectName == 'blankRectangle':
-                self.featureParams = {}
-                self.featureParams[objectName] = value
-            elif objectName == 'cropTbx':
-                self.featureParams = {}
-                self.featureParams[objectName] = value
-            elif objectName == 'rotateModeGroup':
-                self.featureParams = {}
                 self.featureParams[objectName] = value
 
     def getOutput(self, inputPath, suffix) -> dict:
@@ -249,7 +243,12 @@ class Controller():
             if objectName == 'featureSelectorCbb':
                 self.view.showFeatureOptions(list(META.keys())[value])
 
-            command = self.model.createCommand({objectName: value})
+            convertedValue = value
+            if objectName == 'fromTimeTbx' or objectName == 'toTimeTbx':
+                if isinstance(value, QTime):
+                    convertedValue = value.toString('hh:mm:ss.z')
+
+            command = self.model.createCommand({objectName: convertedValue})
             self.view.setCommand(command)
 
     def handleDragDropFile(self, paths) -> None:
@@ -292,6 +291,7 @@ class Controller():
             blankRectangle = self.model.getBlankRectangle(self.log)
             command = self.model.createCommand(
                 {'blankRectangle': blankRectangle})
+            self.view.setBlankRectangle(blankRectangle)
             self.view.setCommand(command)
 
     def handleDialogReject(self) -> None:
@@ -466,23 +466,23 @@ class FeatureOptionComponent(Component):
 
 class CutFeatureOptionComponent(Component):
     def _createWidgets(self) -> None:
-        self.fromTimeTbx = QLineEdit()
+        self.fromTimeTbx = QTimeEdit()
         self.fromTimeTbx.setObjectName('fromTimeTbx')
-        self.fromTimeTbx.setPlaceholderText('hh:mm:ss.ms')
+        self.fromTimeTbx.setDisplayFormat('hh:mm:ss.z')
         fromTimeSubLayout = QFormLayout()
         fromTimeSubLayout.addRow('From:', self.fromTimeTbx)
         self.layout.addLayout(fromTimeSubLayout, 0, 0)
 
-        self.toTimeTbx = QLineEdit()
+        self.toTimeTbx = QTimeEdit()
         self.toTimeTbx.setObjectName('toTimeTbx')
-        self.toTimeTbx.setPlaceholderText('hh:mm:ss.ms')
+        self.toTimeTbx.setDisplayFormat('hh:mm:ss.z')
         toTimeSubLayout = QFormLayout()
         toTimeSubLayout.addRow('To:', self.toTimeTbx)
         self.layout.addLayout(toTimeSubLayout, 0, 1)
 
     def _connectSlots(self, handler) -> None:
-        self.fromTimeTbx.textChanged.connect(handler)
-        self.toTimeTbx.textChanged.connect(handler)
+        self.fromTimeTbx.timeChanged.connect(handler)
+        self.toTimeTbx.timeChanged.connect(handler)
 
 
 class RmBlBarFeatureOptionComponent(Component):
