@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+import winsound
 
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtCore import QProcess, QTime
@@ -130,7 +131,6 @@ class Model():
         self.feature = self.metaKeys[0]
         self.generalParams = {}
         self.featureParams = {}
-        self.forceFormat = ''
 
     def setValueToState(self, events: dict) -> None:
         for objectName, value in events.items():
@@ -141,7 +141,7 @@ class Model():
                 self.featureParams = {}
             elif objectName == 'copyAudioChk' or objectName == 'overwriteChk':
                 self.generalParams[objectName] = value
-            elif objectName == 'fromTimeTbx' or objectName == 'toTimeTbx':
+            else:
                 self.featureParams[objectName] = value
 
     def getOutput(self, inputPath, suffix) -> dict:
@@ -155,9 +155,6 @@ class Model():
         self.setValueToState(events)
 
         commandChain = ['ffmpeg']
-
-        if self.forceFormat:
-            commandChain.append(self.forceFormat)
 
         if self.paths and len(self.paths) > 0:
             inputPath = Path(self.paths[0]).__str__()
@@ -173,7 +170,7 @@ class Model():
             if toTime:
                 commandChain.append('-to {}'.format(toTime))
         elif self.feature == 'CONCAT':
-            pass
+            commandChain.insert(1, '-f concat')
         elif self.feature == 'RMBLBAR':
             blankRectangle = self.featureParams.get('blankRectangle') or ''
             commandChain.append('-vf crop={}'.format(blankRectangle))
@@ -286,6 +283,7 @@ class Controller():
     def handleFinish(self) -> None:
         self.dialog.reject()
         self.process = None
+        winsound.MessageBeep(winsound.MB_OK)
 
         if self.model.feature == 'RMBLBAR':
             blankRectangle = self.model.getBlankRectangle(self.log)
